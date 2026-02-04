@@ -1,0 +1,389 @@
+---
+# Production Configuration for Intelligent Serverless Framework
+
+environment: production
+
+# Database Configuration
+database:
+  host: ${DB_HOST:postgresql-primary}
+  port: ${DB_PORT:5432}
+  name: ${DB_NAME:serverless_framework}
+  user: ${DB_USER:serverless_admin}
+  password: ${DB_PASSWORD}
+  pool_size: 20
+  max_overflow: 40
+  pool_pre_ping: true
+  echo: false
+  
+  # Connection string
+  url: "postgresql+asyncpg://${DB_USER}:${DB_PASSWORD}@${DB_HOST}:${DB_PORT}/${DB_NAME}"
+
+# Redis Configuration
+redis:
+  host: ${REDIS_HOST:redis-master}
+  port: ${REDIS_PORT:6379}
+  password: ${REDIS_PASSWORD}
+  db: 0
+  max_connections: 100
+  decode_responses: true
+  
+  # Cluster mode
+  cluster:
+    enabled: true
+    nodes:
+      - redis-node-0:6379
+      - redis-node-1:6379
+      - redis-node-2:6379
+
+# Kubernetes Configuration
+kubernetes:
+  in_cluster: true
+  namespace: serverless-system
+  config_path: ${KUBECONFIG:~/.kube/config}
+  
+  # Node selection
+  edge_label: "tier=edge"
+  regional_label: "tier=regional"
+  cloud_label: "tier=cloud"
+
+# Prediction Module
+prediction:
+  # Model configuration
+  model_type: hybrid  # hybrid, lstm, arima, prophet
+  model_path: /data/models/prediction/
+  
+  # Hybrid model weights
+  hybrid:
+    arima_weight: 0.3
+    lstm_weight: 0.7
+  
+  # LSTM configuration
+  lstm:
+    input_size: 15
+    hidden_size: 128
+    num_layers: 3
+    dropout: 0.2
+    batch_size: 64
+    learning_rate: 0.001
+    epochs: 100
+  
+  # ARIMA configuration
+  arima:
+    order: [5, 1, 2]
+    seasonal_order: [1, 1, 1, 24]
+    auto_tune: true
+  
+  # Prediction parameters
+  prediction_horizon: 600  # seconds (10 minutes)
+  update_interval: 30  # seconds
+  history_window: 86400  # 24 hours
+  min_data_points: 100
+  
+  # Feature engineering
+  features:
+    - hour_of_day
+    - day_of_week
+    - is_weekend
+    - is_holiday
+    - moving_avg_5min
+    - moving_avg_15min
+    - moving_avg_1hour
+    - std_dev_1hour
+    - trend_coefficient
+    - seasonal_decomposition
+    - lag_1
+    - lag_2
+    - lag_3
+  
+  # Retraining
+  retrain_interval: 3600  # 1 hour
+  retrain_threshold: 0.15  # 15% MAPE degradation
+
+# Placement Optimization
+placement:
+  # Optimization algorithm
+  algorithm: hungarian  # hungarian, genetic, simulated_annealing
+  
+  # Optimization interval
+  optimization_interval: 300  # 5 minutes
+  
+  # Migration parameters
+  migration_threshold: 0.15  # 15% cost improvement
+  max_concurrent_migrations: 5
+  migration_cooldown: 600  # 10 minutes
+  
+  # Cost weights
+  cost_weights:
+    user_latency: 1.5
+    data_locality: 1.2
+    inter_function: 1.0
+    resource_utilization: 0.8
+    migration_cost: 2.0
+  
+  # Placement constraints
+  constraints:
+    max_functions_per_node: 100
+    min_cpu_available: 1.0  # cores
+    min_memory_available: 2048  # MB
+    max_node_utilization: 0.85
+
+# Container Warming
+warming:
+  # Pool configuration
+  min_warm_pool: 2
+  max_warm_pool: 100
+  default_warm_pool: 5
+  
+  # Pre-warming strategy
+  prewarm_buffer: 1.2  # 20% over prediction
+  prewarm_lead_time: 60  # seconds ahead
+  
+  # Keep-alive policies
+  keep_alive:
+    adaptive: true
+    min_duration: 5  # seconds
+    max_duration: 600  # 10 minutes
+    default_duration: 60
+    cost_threshold: 0.001  # dollars per minute
+  
+  # Pool management
+  pool_check_interval: 10  # seconds
+  idle_timeout: 300  # 5 minutes
+  drain_timeout: 30  # seconds
+  
+  # Checkpoint configuration
+  checkpoint:
+    enabled: true
+    after_init: true
+    compression: true
+    storage_path: /var/checkpoints
+
+# Checkpoint/Restore (CRIU)
+checkpoint:
+  enabled: true
+  criu_path: /usr/sbin/criu
+  images_dir: /var/lib/serverless/checkpoints
+  
+  # Checkpoint creation
+  checkpoint_after_init: true
+  checkpoint_after_warmup: true
+  max_checkpoints_per_function: 5
+  
+  # Restore configuration
+  restore_timeout: 5  # seconds
+  verify_after_restore: true
+  
+  # Optimization
+  compression:
+    enabled: true
+    algorithm: lz4  # lz4, zstd, gzip
+    level: 3
+  
+  # Storage
+  storage:
+    type: local  # local, s3, gcs
+    cleanup_interval: 3600
+    retention_days: 7
+
+# Cost Optimization
+cost:
+  # Pricing model (per second)
+  compute_cost_per_gb_second: 0.0000166667
+  memory_cost_per_gb_second: 0.0000016667
+  network_cost_per_gb: 0.12
+  storage_cost_per_gb_month: 0.023
+  
+  # Cold start cost (business impact)
+  cold_start_business_cost: 0.002  # dollars
+  
+  # Optimization targets
+  target_cost_reduction: 0.30  # 30%
+  max_acceptable_latency: 200  # ms
+  
+  # Budget controls
+  daily_budget: 1000  # dollars
+  alert_threshold: 0.90  # 90% of budget
+
+# Function Composition
+composition:
+  # Analysis
+  trace_sampling_rate: 0.1  # 10%
+  min_call_frequency: 50  # calls per minute
+  max_data_size_for_fusion: 10240  # 10KB
+  
+  # Fusion criteria
+  fusion:
+    enabled: true
+    min_latency_benefit: 100  # ms
+    max_fused_functions: 5
+    allow_cross_language: false
+  
+  # Call graph
+  graph_update_interval: 300  # 5 minutes
+  max_graph_depth: 10
+
+# Federated Learning
+federated:
+  enabled: true
+  
+  # Federation settings
+  num_global_rounds: 100
+  local_epochs: 5
+  aggregation_strategy: fedavg  # fedavg, fedprox, fedadam
+  
+  # Privacy
+  differential_privacy:
+    enabled: true
+    epsilon: 1.0
+    delta: 1e-5
+  
+  # Communication
+  update_frequency: 3600  # 1 hour
+  compression: true
+  secure_aggregation: true
+
+# Monitoring
+monitoring:
+  # Metrics collection
+  metrics_interval: 10  # seconds
+  metrics_retention: 604800  # 7 days
+  
+  # eBPF monitoring
+  ebpf:
+    enabled: true
+    programs:
+      - tcp_connect
+      - tcp_sendmsg
+      - tcp_close
+      - execve
+      - openat
+  
+  # Prometheus
+  prometheus:
+    port: 9090
+    scrape_interval: 15
+  
+  # Tracing
+  tracing:
+    enabled: true
+    sampling_rate: 0.1
+    exporter: jaeger
+    endpoint: jaeger-collector:14268
+
+# API Configuration
+api:
+  host: 0.0.0.0
+  port: 8000
+  workers: 4
+  
+  # Rate limiting
+  rate_limit:
+    enabled: true
+    requests_per_minute: 1000
+    burst: 100
+  
+  # Security
+  cors:
+    enabled: true
+    origins:
+      - "*"
+  
+  # Authentication
+  auth:
+    enabled: true
+    jwt_secret: ${JWT_SECRET}
+    jwt_algorithm: HS256
+    access_token_expire: 3600
+
+# Control Plane
+control_plane:
+  # Leader election
+  leader_election:
+    enabled: true
+    lease_duration: 15
+    renew_deadline: 10
+    retry_period: 2
+  
+  # Reconciliation loops
+  reconciliation:
+    prediction_interval: 30
+    placement_interval: 300
+    warming_interval: 10
+    cost_interval: 60
+    composition_interval: 300
+    federated_interval: 3600
+
+# Logging
+logging:
+  level: INFO  # DEBUG, INFO, WARNING, ERROR, CRITICAL
+  format: json
+  output: stdout
+  
+  # Log aggregation
+  aggregation:
+    enabled: true
+    backend: elasticsearch
+    endpoint: elasticsearch:9200
+  
+  # Structured logging
+  include_trace_id: true
+  include_span_id: true
+  include_request_id: true
+
+# Performance Tuning
+performance:
+  # Concurrency
+  max_concurrent_predictions: 100
+  max_concurrent_placements: 50
+  max_concurrent_warmups: 200
+  
+  # Caching
+  cache:
+    enabled: true
+    ttl: 300  # 5 minutes
+    max_size: 10000
+  
+  # Batching
+  batch_size: 50
+  batch_timeout: 1.0  # seconds
+
+# Feature Flags
+features:
+  adaptive_keepalive: true
+  checkpoint_restore: true
+  function_fusion: true
+  federated_learning: true
+  predictive_warming: true
+  intelligent_placement: true
+  cost_optimization: true
+  auto_scaling: true
+
+# Alerts
+alerts:
+  enabled: true
+  
+  channels:
+    - type: email
+      addresses:
+        - ops@example.com
+    - type: slack
+      webhook: ${SLACK_WEBHOOK}
+    - type: pagerduty
+      api_key: ${PAGERDUTY_KEY}
+  
+  rules:
+    - name: high_cold_start_rate
+      condition: "cold_start_rate > 0.20"
+      severity: warning
+    
+    - name: sla_violation
+      condition: "p99_latency > 200"
+      severity: critical
+    
+    - name: cost_overrun
+      condition: "daily_cost > daily_budget * 0.95"
+      severity: critical
+    
+    - name: prediction_accuracy_degradation
+      condition: "prediction_mape > 0.20"
+      severity: warning

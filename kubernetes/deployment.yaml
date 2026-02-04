@@ -1,0 +1,29 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: control-plane
+  namespace: serverless-system
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: control-plane
+  template:
+    metadata:
+      labels:
+        app: control-plane
+    spec:
+      containers:
+      - name: control-plane
+        image: intelligent-serverless:latest
+        command: ["python", "-m", "src.control_plane.main"]
+        env:
+        - name: ENVIRONMENT
+          value: "production"
+        resources:
+          requests:
+            memory: "2Gi"
+            cpu: "1000m"
+          limits:
+            memory: "4Gi"
+            cpu: "2000m"

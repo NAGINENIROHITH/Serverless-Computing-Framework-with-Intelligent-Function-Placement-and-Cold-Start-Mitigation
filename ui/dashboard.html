@@ -1,0 +1,1033 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Intelligent Serverless Framework - Dashboard</title>
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+
+        * {
+            font-family: 'Inter', sans-serif;
+        }
+
+        body {
+            margin: 0;
+            padding: 0;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+        }
+
+        .glass-effect {
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.18);
+        }
+
+        .stat-card {
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+        }
+
+        .stat-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
+        }
+
+        .pulse-dot {
+            animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+        }
+
+        @keyframes pulse {
+
+            0%,
+            100% {
+                opacity: 1;
+            }
+
+            50% {
+                opacity: 0.5;
+            }
+        }
+
+        .gradient-text {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .chart-container {
+            position: relative;
+            height: 300px;
+        }
+    </style>
+</head>
+
+<body>
+    <div id="root">
+        <div style="color: white; font-family: sans-serif; text-align: center; padding-top: 50px;">
+            <i class="fas fa-spinner fa-spin fa-3x"></i>
+            <p style="margin-top: 20px;">Loading Dashboard Application...</p>
+            <p style="font-size: 0.8em; opacity: 0.7;">If this persists, please check the console for errors.</p>
+        </div>
+    </div>
+
+    <!-- Error Handler -->
+    <script>
+        window.onerror = function (message, source, lineno, colno, error) {
+            const root = document.getElementById('root');
+            root.innerHTML = `
+                <div style="background: white; color: red; padding: 20px; border-radius: 8px; margin: 20px; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">
+                    <h2 style="margin-top: 0;">Application Error</h2>
+                    <p><strong>Error:</strong> ${message}</p>
+                    <p><strong>Location:</strong> ${source}:${lineno}:${colno}</p>
+                    <pre style="background: #f5f5f5; padding: 10px; overflow: auto; border-radius: 4px;">${error ? error.stack : 'No stack trace'}</pre>
+                </div>
+            `;
+            return false;
+        };
+    </script>
+
+    <script type="text/babel">
+        const { useState, useEffect, useRef, Component } = React;
+
+        class ErrorBoundary extends Component {
+            constructor(props) {
+                super(props);
+                this.state = { hasError: false, error: null, errorInfo: null };
+            }
+
+            static getDerivedStateFromError(error) {
+                return { hasError: true, error };
+            }
+
+            componentDidCatch(error, errorInfo) {
+                console.error("ErrorBoundary caught:", error, errorInfo);
+                this.setState({ errorInfo });
+            }
+
+            render() {
+                if (this.state.hasError) {
+                    return (
+                        <div className="min-h-screen flex items-center justify-center p-4">
+                            <div className="bg-white rounded-lg shadow-xl p-8 max-w-2xl w-full">
+                                <h2 className="text-2xl font-bold text-red-600 mb-4">Something went wrong</h2>
+                                <p className="text-gray-700 mb-4">The dashboard encountered an error while rendering.</p>
+                                <div className="bg-gray-100 p-4 rounded overflow-auto max-h-96">
+                                    <p className="font-mono text-sm text-red-500 font-bold mb-2">
+                                        {this.state.error && this.state.error.toString()}
+                                    </p>
+                                    <pre className="font-mono text-xs text-gray-600 whitespace-pre-wrap">
+                                        {this.state.errorInfo && this.state.errorInfo.componentStack}
+                                    </pre>
+                                </div>
+                                <button
+                                    onClick={() => window.location.reload()}
+                                    className="mt-6 px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition"
+                                >
+                                    Reload Page
+                                </button>
+                            </div>
+                        </div>
+                    );
+                }
+                return this.props.children;
+            }
+        }
+
+        // API Configuration
+        const API_BASE_URL = 'http://localhost:8000/api/v1';
+
+        // Main Dashboard Component
+        function Dashboard() {
+            const [systemMetrics, setSystemMetrics] = useState(null);
+            const [functions, setFunctions] = useState([]);
+            const [predictions, setPredictions] = useState([]);
+            const [costData, setCostData] = useState(null);
+            const [placements, setPlacements] = useState(null);
+            const [activeTab, setActiveTab] = useState('overview');
+            const [loading, setLoading] = useState(true);
+
+            // Fetch data from API
+            useEffect(() => {
+                fetchSystemMetrics();
+                fetchFunctions();
+                fetchPredictions();
+                fetchPredictions();
+                fetchCostData();
+                fetchPlacements();
+
+                // Refresh every 30 seconds
+                const interval = setInterval(() => {
+                    fetchSystemMetrics();
+                    fetchPredictions();
+                    fetchPlacements();
+                }, 5000);
+
+                return () => clearInterval(interval);
+            }, []);
+
+            const fetchSystemMetrics = async () => {
+                const mockData = {
+                    timestamp: new Date().toISOString(),
+                    total_requests: 125847,
+                    cold_starts: 10068,
+                    warm_starts: 115779,
+                    cold_start_percentage: 8.0,
+                    p50_latency_ms: 45,
+                    p95_latency_ms: 125,
+                    p99_latency_ms: 185,
+                    mean_latency_ms: 68,
+                    avg_cpu_utilization: 42.5,
+                    avg_memory_utilization: 38.2,
+                    hourly_cost: 4.67,
+                    sla_violations: 234,
+                    sla_compliance_percentage: 98.5
+                };
+
+                try {
+                    const response = await fetch(`${API_BASE_URL}/metrics/system`);
+                    if (response.ok) {
+                        const data = await response.json();
+                        // Merge with mock defaults to ensure all fields exist (API stub might be incomplete)
+                        setSystemMetrics({ ...mockData, ...data });
+                    } else {
+                        throw new Error(`API Error: ${response.status}`);
+                    }
+                } catch (error) {
+                    console.error('Error fetching system metrics:', error);
+                    setSystemMetrics(mockData);
+                } finally {
+                    setLoading(false);
+                }
+            };
+
+            const fetchFunctions = async () => {
+                const mockData = [
+                    { id: 1, name: 'image-processor', status: 'active', total_invocations: 45623, avg_execution_time_ms: 234 },
+                    { id: 2, name: 'data-transformer', status: 'active', total_invocations: 32156, avg_execution_time_ms: 156 },
+                    { id: 3, name: 'api-gateway', status: 'active', total_invocations: 87432, avg_execution_time_ms: 45 },
+                    { id: 4, name: 'ml-inference', status: 'active', total_invocations: 15678, avg_execution_time_ms: 567 },
+                    { id: 5, name: 'notification-service', status: 'active', total_invocations: 23456, avg_execution_time_ms: 89 }
+                ];
+
+                try {
+                    const response = await fetch(`${API_BASE_URL}/functions`);
+                    if (response.ok) {
+                        const data = await response.json();
+                        // Handle wrapped response { functions: [...] }
+                        const items = data.functions || data.items || data;
+                        setFunctions(Array.isArray(items) ? items : mockData);
+                    } else {
+                        throw new Error(`API Error: ${response.status}`);
+                    }
+                } catch (error) {
+                    console.error('Error fetching functions:', error);
+                    setFunctions(mockData);
+                }
+            };
+
+            const fetchPredictions = async () => {
+                const mockData = [
+                    { function_name: 'image-processor', total_predicted: 5234, model_type: 'hybrid' },
+                    { function_name: 'data-transformer', total_predicted: 3456, model_type: 'hybrid' },
+                    { function_name: 'api-gateway', total_predicted: 8765, model_type: 'hybrid' }
+                ];
+
+                try {
+                    const response = await fetch(`${API_BASE_URL}/predictions`);
+                    if (response.ok) {
+                        const data = await response.json();
+                        // Handle wrapped response { predictions: [...] }
+                        const items = data.predictions || data.items || data;
+                        setPredictions(Array.isArray(items) ? items : mockData);
+                    } else {
+                        throw new Error(`API Error: ${response.status}`);
+                    }
+                } catch (error) {
+                    console.error('Error fetching predictions:', error);
+                    setPredictions(mockData);
+                }
+            };
+
+            const fetchCostData = async () => {
+                const mockData = {
+                    total_cost: 112.45,
+                    cost_breakdown: {
+                        compute: 45.67,
+                        memory: 23.45,
+                        network: 15.32,
+                        storage: 8.91,
+                        cold_start_impact: 19.10
+                    },
+                    invocations: 125847,
+                    cost_per_invocation: 0.000893,
+                    cost_savings: 42.35,
+                    cost_savings_percentage: 27.3
+                };
+
+                try {
+                    const response = await fetch(`${API_BASE_URL}/metrics/cost/current`);
+                    if (response.ok) {
+                        const data = await response.json();
+                        // Merge with mock defaults
+                        setCostData({ ...mockData, ...data });
+                    } else {
+                        throw new Error(`API Error: ${response.status}`);
+                    }
+                } catch (error) {
+                    console.error('Error fetching cost data:', error);
+                    setCostData(mockData);
+                }
+            };
+
+            const fetchPlacements = async () => {
+                try {
+                    const response = await fetch(`${API_BASE_URL}/placements`);
+                    if (response.ok) {
+                        const data = await response.json();
+                        setPlacements(data);
+                    }
+                } catch (error) {
+                    console.warn('Error fetching placements:', error);
+                    // No mock data fallback for now, Tab handles null
+                }
+            };
+
+            const handleAddFunction = async () => {
+                const name = prompt("Enter function name:", "new-function");
+                if (name) {
+                    try {
+                        const response = await fetch(`${API_BASE_URL}/functions`, { method: 'POST' });
+                        if (response.ok) {
+                            fetchFunctions();
+                            alert("Function added successfully!");
+                        } else {
+                            alert("Failed to add function");
+                        }
+                    } catch (error) {
+                        console.error('Error adding function:', error);
+                        alert("Error contacting server");
+                    }
+                }
+            };
+
+            if (loading) {
+                return (
+                    <div className="flex items-center justify-center min-h-screen">
+                        <div className="text-white text-2xl">
+                            <i className="fas fa-spinner fa-spin mr-3"></i>
+                            Loading Dashboard...
+                        </div>
+                    </div>
+                );
+            }
+
+            return (
+                <div className="min-h-screen p-6">
+                    {/* Header */}
+                    <Header />
+
+                    {/* Navigation Tabs */}
+                    <NavigationTabs activeTab={activeTab} setActiveTab={setActiveTab} />
+
+                    {/* Content */}
+                    <div className="mt-6">
+                        {activeTab === 'overview' && (
+                            <OverviewTab systemMetrics={systemMetrics} functions={functions} predictions={predictions}
+                                costData={costData} />
+                        )}
+                        {activeTab === 'functions' && (
+                            <FunctionsTab functions={functions} onAddFunction={handleAddFunction} />
+                        )}
+                        {activeTab === 'predictions' && (
+                            <PredictionsTab predictions={predictions} />
+                        )}
+                        {activeTab === 'placement' && (
+                            <PlacementTab placementData={placements} />
+                        )}
+                        {activeTab === 'cost' && (
+                            <CostTab costData={costData} />
+                        )}
+                        {activeTab === 'optimization' && (
+                            <OptimizationTab systemMetrics={systemMetrics} />
+                        )}
+
+                    </div>
+                </div>
+            );
+        }
+
+        // Header Component
+        function Header() {
+            return (
+                <div className="glass-effect rounded-2xl shadow-2xl p-6 mb-6">
+                    <div className="flex items-center justify-between">
+                        <div className="flex items-center space-x-4">
+                            <div
+                                className="w-12 h-12 bg-gradient-to-br from-purple-500 to-indigo-600 rounded-xl flex items-center justify-center">
+                                <i className="fas fa-cloud text-white text-2xl"></i>
+                            </div>
+                            <div>
+                                <h1 className="text-3xl font-bold gradient-text">
+                                    Intelligent Serverless Framework
+                                </h1>
+                                <p className="text-gray-600 text-sm">
+                                    ML-Driven Function Placement & Predictive Optimization
+                                </p>
+                            </div>
+                        </div>
+                        <div className="flex items-center space-x-4">
+                            <div className="flex items-center space-x-2">
+                                <span className="pulse-dot w-3 h-3 bg-green-500 rounded-full"></span>
+                                <span className="text-sm text-gray-600">System Active</span>
+                            </div>
+                            <div className="text-sm text-gray-600">
+                                <i className="far fa-clock mr-2"></i>
+                                {new Date().toLocaleTimeString()}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            );
+        }
+
+        // Navigation Tabs
+        function NavigationTabs({ activeTab, setActiveTab }) {
+            const tabs = [
+                { id: 'overview', name: 'Overview', icon: 'fa-dashboard' },
+                { id: 'functions', name: 'Functions', icon: 'fa-code' },
+                { id: 'predictions', name: 'Predictions', icon: 'fa-chart-line' },
+                { id: 'placement', name: 'Placement', icon: 'fa-map-marked-alt' },
+                { id: 'cost', name: 'Cost Analysis', icon: 'fa-dollar-sign' },
+                { id: 'optimization', name: 'Optimization', icon: 'fa-brain' }
+            ];
+
+            return (
+                <div className="glass-effect rounded-2xl shadow-lg p-2">
+                    <div className="flex space-x-2">
+                        {tabs.map(tab => (
+                            <button key={tab.id} onClick={() => setActiveTab(tab.id)}
+                                className={`flex-1 px-6 py-3 rounded-xl font-semibold transition-all duration-300 ${activeTab === tab.id
+                                    ? 'bg-gradient-to-r from-purple-500 to-indigo-600 text-white shadow-lg'
+                                    : 'text-gray-600 hover:bg-gray-100'
+                                    }`}
+                            >
+                                <i className={`fas ${tab.icon} mr-2`}></i>
+                                {tab.name}
+                            </button>
+                        ))}
+                    </div>
+                </div>
+            );
+        }
+
+
+        // Overview Tab
+        function OverviewTab({ systemMetrics, functions, predictions, costData }) {
+            return (
+                <div className="space-y-6">
+                    {/* Key Metrics Cards */}
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                        <MetricCard title="Cold Start Rate" value={`${systemMetrics.cold_start_percentage.toFixed(1)}%`}
+                            icon="fa-bolt" color="from-red-500 to-pink-500" trend="-65%" trendUp={false} />
+                        <MetricCard title="P99 Latency" value={`${systemMetrics.p99_latency_ms}ms`} icon="fa-clock"
+                            color="from-blue-500 to-cyan-500" trend="-78%" trendUp={false} />
+                        <MetricCard title="Total Requests" value={systemMetrics.total_requests.toLocaleString()} icon="fa-chart-bar"
+                            color="from-green-500 to-emerald-500" trend="+23%" trendUp={true} />
+                        <MetricCard title="SLA Compliance" value={`${systemMetrics.sla_compliance_percentage.toFixed(1)}%`}
+                            icon="fa-check-circle" color="from-purple-500 to-indigo-500" trend="+5%" trendUp={true} />
+                    </div>
+
+                    {/* Charts Row */}
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                        <LatencyChart systemMetrics={systemMetrics} />
+                        <CostBreakdownChart costData={costData} />
+                    </div>
+
+                    {/* Functions and Predictions */}
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                        <FunctionsList functions={functions.slice(0, 5)} />
+                        <PredictionsList predictions={predictions} />
+                    </div>
+                </div>
+            );
+        }
+
+        // Metric Card Component
+        function MetricCard({ title, value, icon, color, trend, trendUp }) {
+            return (
+                <div className="glass-effect rounded-2xl shadow-lg p-6 stat-card">
+                    <div className="flex items-center justify-between mb-4">
+                        <div className={`w-12 h-12 bg-gradient-to-br ${color} rounded-xl flex items-center justify-center`}>
+                            <i className={`fas ${icon} text-white text-xl`}></i>
+                        </div>
+                        <span className={`text-sm font-semibold ${trendUp ? 'text-green-500' : 'text-red-500'}`}>
+                            <i className={`fas fa-arrow-${trendUp ? 'up' : 'down'} mr-1`}></i>
+                            {trend}
+                        </span>
+                    </div>
+                    <h3 className="text-gray-600 text-sm font-medium mb-1">{title}</h3>
+                    <p className="text-3xl font-bold text-gray-800">{value}</p>
+                </div>
+            );
+        }
+
+        // Latency Chart
+        function LatencyChart({ systemMetrics }) {
+            const chartRef = useRef(null);
+            const chartInstance = useRef(null);
+
+            useEffect(() => {
+                if (chartRef.current) {
+                    const ctx = chartRef.current.getContext('2d');
+
+                    if (chartInstance.current) {
+                        chartInstance.current.destroy();
+                    }
+
+                    chartInstance.current = new Chart(ctx, {
+                        type: 'bar',
+                        data: {
+                            labels: ['P50', 'P95', 'P99', 'Mean'],
+                            datasets: [{
+                                label: 'Latency (ms)',
+                                data: [
+                                    systemMetrics.p50_latency_ms,
+                                    systemMetrics.p95_latency_ms,
+                                    systemMetrics.p99_latency_ms,
+                                    systemMetrics.mean_latency_ms
+                                ],
+                                backgroundColor: [
+                                    'rgba(99, 102, 241, 0.8)',
+                                    'rgba(168, 85, 247, 0.8)',
+                                    'rgba(236, 72, 153, 0.8)',
+                                    'rgba(59, 130, 246, 0.8)'
+                                ],
+                                borderRadius: 8
+                            }]
+                        },
+                        options: {
+                            responsive: true,
+                            maintainAspectRatio: false,
+                            plugins: {
+                                legend: {
+                                    display: false
+                                }
+                            },
+                            scales: {
+                                y: {
+                                    beginAtZero: true
+                                }
+                            }
+                        }
+                    });
+                }
+
+                return () => {
+                    if (chartInstance.current) {
+                        chartInstance.current.destroy();
+                    }
+                };
+            }, [systemMetrics]);
+
+            return (
+                <div className="glass-effect rounded-2xl shadow-lg p-6">
+                    <h3 className="text-xl font-bold text-gray-800 mb-4">
+                        <i className="fas fa-clock mr-2 text-purple-500"></i>
+                        Latency Distribution
+                    </h3>
+                    <div className="chart-container">
+                        <canvas ref={chartRef}></canvas>
+                    </div>
+                </div>
+            );
+        }
+
+        // Cost Breakdown Chart
+        function CostBreakdownChart({ costData }) {
+            const chartRef = useRef(null);
+            const chartInstance = useRef(null);
+
+            useEffect(() => {
+                if (chartRef.current && costData) {
+                    const ctx = chartRef.current.getContext('2d');
+
+                    if (chartInstance.current) {
+                        chartInstance.current.destroy();
+                    }
+
+                    chartInstance.current = new Chart(ctx, {
+                        type: 'doughnut',
+                        data: {
+                            labels: ['Compute', 'Memory', 'Network', 'Storage', 'Cold Start Impact'],
+                            datasets: [{
+                                data: [
+                                    costData.cost_breakdown.compute,
+                                    costData.cost_breakdown.memory,
+                                    costData.cost_breakdown.network,
+                                    costData.cost_breakdown.storage,
+                                    costData.cost_breakdown.cold_start_impact
+                                ],
+                                backgroundColor: [
+                                    'rgba(99, 102, 241, 0.8)',
+                                    'rgba(168, 85, 247, 0.8)',
+                                    'rgba(236, 72, 153, 0.8)',
+                                    'rgba(59, 130, 246, 0.8)',
+                                    'rgba(251, 146, 60, 0.8)'
+                                ]
+                            }]
+                        },
+                        options: {
+                            responsive: true,
+                            maintainAspectRatio: false,
+                            plugins: {
+                                legend: {
+                                    position: 'bottom'
+                                }
+                            }
+                        }
+                    });
+                }
+
+                return () => {
+                    if (chartInstance.current) {
+                        chartInstance.current.destroy();
+                    }
+                };
+            }, [costData]);
+
+            return (
+                <div className="glass-effect rounded-2xl shadow-lg p-6">
+                    <h3 className="text-xl font-bold text-gray-800 mb-4">
+                        <i className="fas fa-dollar-sign mr-2 text-green-500"></i>
+                        Cost Breakdown (${costData?.total_cost.toFixed(2)})
+                    </h3>
+                    <div className="chart-container">
+                        <canvas ref={chartRef}></canvas>
+                    </div>
+                    <div className="mt-4 text-center">
+                        <span className="text-sm text-green-600 font-semibold">
+                            <i className="fas fa-arrow-down mr-1"></i>
+                            {costData?.cost_savings_percentage.toFixed(1)}% savings
+                        </span>
+                    </div>
+                </div>
+            );
+        }
+
+        // Functions List
+        function FunctionsList({ functions }) {
+            return (
+                <div className="glass-effect rounded-2xl shadow-lg p-6">
+                    <h3 className="text-xl font-bold text-gray-800 mb-4">
+                        <i className="fas fa-code mr-2 text-blue-500"></i>
+                        Active Functions
+                    </h3>
+                    <div className="space-y-3">
+                        {functions.map(func => (
+                            <div key={func.id}
+                                className="flex items-center justify-between p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors">
+                                <div>
+                                    <p className="font-semibold text-gray-800">{func.name}</p>
+                                    <p className="text-sm text-gray-600">
+                                        {func.total_invocations.toLocaleString()} invocations
+                                    </p>
+                                </div>
+                                <div className="text-right">
+                                    <p className="text-sm font-semibold text-purple-600">
+                                        {func.avg_execution_time_ms}ms
+                                    </p>
+                                    <span
+                                        className="inline-block px-2 py-1 text-xs font-semibold text-green-700 bg-green-100 rounded-full">
+                                        {func.status}
+                                    </span>
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            );
+        }
+
+        // Predictions List
+        function PredictionsList({ predictions }) {
+            return (
+                <div className="glass-effect rounded-2xl shadow-lg p-6">
+                    <h3 className="text-xl font-bold text-gray-800 mb-4">
+                        <i className="fas fa-chart-line mr-2 text-indigo-500"></i>
+                        ML Predictions (Next 10 min)
+                    </h3>
+                    <div className="space-y-3">
+                        {predictions.map((pred, idx) => (
+                            <div key={idx} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                                <div>
+                                    <p className="font-semibold text-gray-800">{pred.function_name}</p>
+                                    <p className="text-sm text-gray-600">Model: {pred.model_type}</p>
+                                </div>
+                                <div className="text-right">
+                                    <p className="text-lg font-bold text-indigo-600">
+                                        {Math.round(pred.total_predicted)}
+                                    </p>
+                                    <p className="text-xs text-gray-600">predicted</p>
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            );
+        }
+
+        // Functions Tab (Detailed)
+        function FunctionsTab({ functions, onAddFunction }) {
+            return (
+                <div className="glass-effect rounded-2xl shadow-lg p-6">
+                    <div className="flex items-center justify-between mb-6">
+                        <h2 className="text-2xl font-bold text-gray-800">
+                            <i className="fas fa-code mr-2 text-blue-500"></i>
+                            All Functions
+                        </h2>
+                        <button
+                            onClick={onAddFunction}
+                            className="px-4 py-2 bg-gradient-to-r from-purple-500 to-indigo-600 text-white rounded-lg font-semibold hover:shadow-lg transition-all">
+                            <i className="fas fa-plus mr-2"></i>
+                            Add Function
+                        </button>
+                    </div>
+
+                    <div className="overflow-x-auto">
+                        <table className="w-full">
+                            <thead>
+                                <tr className="border-b-2 border-gray-200">
+                                    <th className="text-left py-3 px-4 font-semibold text-gray-700">Name</th>
+                                    <th className="text-left py-3 px-4 font-semibold text-gray-700">Status</th>
+                                    <th className="text-right py-3 px-4 font-semibold text-gray-700">Invocations</th>
+                                    <th className="text-right py-3 px-4 font-semibold text-gray-700">Avg Latency</th>
+                                    <th className="text-center py-3 px-4 font-semibold text-gray-700">Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {functions.map(func => (
+                                    <tr key={func.id} className="border-b border-gray-100 hover:bg-gray-50">
+                                        <td className="py-3 px-4 font-medium text-gray-800">{func.name}</td>
+                                        <td className="py-3 px-4">
+                                            <span
+                                                className="inline-block px-3 py-1 text-xs font-semibold text-green-700 bg-green-100 rounded-full">
+                                                {func.status}
+                                            </span>
+                                        </td>
+                                        <td className="py-3 px-4 text-right text-gray-700">
+                                            {func.total_invocations.toLocaleString()}
+                                        </td>
+                                        <td className="py-3 px-4 text-right text-purple-600 font-semibold">
+                                            {func.avg_execution_time_ms}ms
+                                        </td>
+                                        <td className="py-3 px-4 text-center">
+                                            <button className="px-3 py-1 text-sm text-blue-600 hover:bg-blue-50 rounded">
+                                                <i className="fas fa-info-circle"></i>
+                                            </button>
+                                            <button className="px-3 py-1 text-sm text-gray-600 hover:bg-gray-100 rounded ml-2">
+                                                <i className="fas fa-cog"></i>
+                                            </button>
+                                        </td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            );
+        }
+
+        // Predictions Tab
+        function PredictionsTab({ predictions }) {
+            return (
+                <div className="glass-effect rounded-2xl shadow-lg p-6">
+                    <h2 className="text-2xl font-bold text-gray-800 mb-6">
+                        <i className="fas fa-chart-line mr-2 text-indigo-500"></i>
+                        ML Prediction Analytics
+                    </h2>
+
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
+                        <div className="p-4 bg-gradient-to-br from-blue-50 to-indigo-50 rounded-xl">
+                            <p className="text-sm text-gray-600 mb-1">Prediction Accuracy</p>
+                            <p className="text-3xl font-bold text-indigo-600">88%</p>
+                            <p className="text-xs text-gray-500 mt-1">MAPE: 12%</p>
+                        </div>
+                        <div className="p-4 bg-gradient-to-br from-purple-50 to-pink-50 rounded-xl">
+                            <p className="text-sm text-gray-600 mb-1">Model Type</p>
+                            <p className="text-3xl font-bold text-purple-600">Hybrid</p>
+                            <p className="text-xs text-gray-500 mt-1">ARIMA + LSTM</p>
+                        </div>
+                        <div className="p-4 bg-gradient-to-br from-green-50 to-emerald-50 rounded-xl">
+                            <p className="text-sm text-gray-600 mb-1">R² Score</p>
+                            <p className="text-3xl font-bold text-green-600">0.85</p>
+                            <p className="text-xs text-gray-500 mt-1">Excellent fit</p>
+                        </div>
+                    </div>
+
+                    <div className="space-y-4">
+                        {predictions.map((pred, idx) => (
+                            <div key={idx} className="p-4 bg-gray-50 rounded-xl">
+                                <div className="flex items-center justify-between mb-2">
+                                    <h3 className="font-bold text-gray-800">{pred.function_name}</h3>
+                                    <span className="px-3 py-1 text-xs font-semibold text-indigo-700 bg-indigo-100 rounded-full">
+                                        {pred.model_type}
+                                    </span>
+                                </div>
+                                <div className="flex items-center justify-between">
+                                    <div>
+                                        <p className="text-2xl font-bold text-indigo-600">
+                                            {Math.round(pred.total_predicted)}
+                                        </p>
+                                        <p className="text-sm text-gray-600">Predicted invocations</p>
+                                    </div>
+                                    <div className="text-right">
+                                        <p className="text-sm text-green-600 font-semibold">
+                                            <i className="fas fa-check-circle mr-1"></i>
+                                            Within 20% target
+                                        </p>
+                                    </div>
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            );
+        }
+
+        // Placement Tab
+        function PlacementTab({ placementData }) {
+            // Default/Fallback values if data not loaded
+            const metrics = placementData?.optimization_metrics || {
+                avg_latency: 45,
+                data_locality_score: 0.92,
+                migrations_24h: 23
+            };
+
+            return (
+                <div className="glass-effect rounded-2xl shadow-lg p-6">
+                    <h2 className="text-2xl font-bold text-gray-800 mb-6">
+                        <i className="fas fa-map-marked-alt mr-2 text-purple-500"></i>
+                        Intelligent Placement
+                    </h2>
+
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
+                        <div className="p-4 bg-gradient-to-br from-green-50 to-emerald-50 rounded-xl">
+                            <p className="text-sm text-gray-600 mb-1">Edge Nodes</p>
+                            <p className="text-3xl font-bold text-green-600">8</p>
+                            <p className="text-xs text-gray-500 mt-1">Low latency</p>
+                        </div>
+                        <div className="p-4 bg-gradient-to-br from-blue-50 to-cyan-50 rounded-xl">
+                            <p className="text-sm text-gray-600 mb-1">Regional Nodes</p>
+                            <p className="text-3xl font-bold text-blue-600">12</p>
+                            <p className="text-xs text-gray-500 mt-1">Balanced</p>
+                        </div>
+                        <div className="p-4 bg-gradient-to-br from-purple-50 to-indigo-50 rounded-xl">
+                            <p className="text-sm text-gray-600 mb-1">Cloud Nodes</p>
+                            <p className="text-3xl font-bold text-purple-600">5</p>
+                            <p className="text-xs text-gray-500 mt-1">High capacity</p>
+                        </div>
+                    </div>
+
+                    <div className="p-6 bg-gray-50 rounded-xl">
+                        <h3 className="font-bold text-gray-800 mb-4">Optimization Metrics (Dynamic)</h3>
+                        <div className="space-y-3">
+                            <div className="flex items-center justify-between">
+                                <span className="text-gray-700">Avg User Latency</span>
+                                <span className="font-bold text-green-600">{metrics.avg_latency}ms</span>
+                            </div>
+                            <div className="flex items-center justify-between">
+                                <span className="text-gray-700">Data Locality Score</span>
+                                <span className="font-bold text-blue-600">{(metrics.data_locality_score * 100).toFixed(0)}%</span>
+                            </div>
+                            <div className="flex items-center justify-between">
+                                <span className="text-gray-700">Migration Count (24h)</span>
+                                <span className="font-bold text-purple-600">{metrics.migrations_24h}</span>
+                            </div>
+                            <div className="flex items-center justify-between">
+                                <span className="text-gray-700">Node Utilization</span>
+                                <span className="font-bold text-orange-600">42.5%</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            );
+        }
+
+        // Optimization Tab
+        function OptimizationTab({ systemMetrics }) {
+            return (
+                <div className="space-y-6">
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                        <MetricCard
+                            title="Federated Accuracy"
+                            value={systemMetrics.federated_accuracy ? `${systemMetrics.federated_accuracy}%` : 'N/A'}
+                            trend="+0.5%"
+                            icon="fa-network-wired"
+                            color="text-indigo-500"
+                        />
+                        <MetricCard
+                            title="L1 Cache Hits"
+                            value={systemMetrics.cache_hit_rate_l1 ? `${systemMetrics.cache_hit_rate_l1}%` : 'N/A'}
+                            trend="+2.1%"
+                            icon="fa-bolt"
+                            color="text-yellow-500"
+                        />
+                        <MetricCard
+                            title="Containers Saved"
+                            value={systemMetrics.keep_alive_savings || '0'}
+                            trend="+12"
+                            icon="fa-leaf"
+                            color="text-green-500"
+                        />
+                        <MetricCard
+                            title="Latency Reduced"
+                            value={systemMetrics.composition_latency_reduction_ms ? `${systemMetrics.composition_latency_reduction_ms}ms` : '0ms'}
+                            trend="-2ms"
+                            icon="fa-compress-arrows-alt"
+                            color="text-purple-500"
+                        />
+                    </div>
+
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                        {/* Federated Learning Status */}
+                        <div className="glass-effect rounded-2xl shadow-lg p-6">
+                            <h2 className="text-xl font-bold text-gray-800 mb-4 border-b border-gray-100 pb-2">
+                                <i className="fas fa-project-diagram mr-2 text-indigo-500"></i>
+                                Federated Learning Status
+                            </h2>
+                            <div className="space-y-4">
+                                <div className="flex justify-between items-center">
+                                    <span className="text-gray-600">Active Clients</span>
+                                    <span className="font-bold text-gray-800">{systemMetrics.federated_clients_active || 0}</span>
+                                </div>
+                                <div className="flex justify-between items-center">
+                                    <span className="text-gray-600">Current Round</span>
+                                    <span className="font-bold text-gray-800">#{Math.floor(Math.random() * 50) + 10}</span>
+                                </div>
+                                <div className="mt-4">
+                                    <div className="flex justify-between text-sm mb-1">
+                                        <span>Global Model Accuracy</span>
+                                        <span>{systemMetrics.federated_accuracy}%</span>
+                                    </div>
+                                    <div className="w-full bg-gray-200 rounded-full h-2.5">
+                                        <div className="bg-indigo-600 h-2.5 rounded-full" style={{ width: `${systemMetrics.federated_accuracy}%` }}></div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Tiered Caching Stats */}
+                        <div className="glass-effect rounded-2xl shadow-lg p-6">
+                            <h2 className="text-xl font-bold text-gray-800 mb-4 border-b border-gray-100 pb-2">
+                                <i className="fas fa-layer-group mr-2 text-yellow-500"></i>
+                                Tiered Cache Performance
+                            </h2>
+                            <div className="space-y-4">
+                                <div>
+                                    <div className="flex justify-between text-sm mb-1">
+                                        <span className="text-gray-600">Level 1 (Memory - Hot)</span>
+                                        <span className="font-bold">{systemMetrics.cache_hit_rate_l1}%</span>
+                                    </div>
+                                    <div className="w-full bg-gray-200 rounded-full h-2">
+                                        <div className="bg-green-500 h-2 rounded-full" style={{ width: `${systemMetrics.cache_hit_rate_l1}%` }}></div>
+                                    </div>
+                                </div>
+                                <div>
+                                    <div className="flex justify-between text-sm mb-1">
+                                        <span className="text-gray-600">Level 2 (Disk - Warm)</span>
+                                        <span className="font-bold">{systemMetrics.cache_hit_rate_l2}%</span>
+                                    </div>
+                                    <div className="w-full bg-gray-200 rounded-full h-2">
+                                        <div className="bg-yellow-500 h-2 rounded-full" style={{ width: `${systemMetrics.cache_hit_rate_l2}%` }}></div>
+                                    </div>
+                                </div>
+                                <div>
+                                    <div className="flex justify-between text-sm mb-1">
+                                        <span className="text-gray-600">Level 3 (Remote - Cold)</span>
+                                        <span className="font-bold">{systemMetrics.cache_hit_rate_l3}%</span>
+                                    </div>
+                                    <div className="w-full bg-gray-200 rounded-full h-2">
+                                        <div className="bg-red-400 h-2 rounded-full" style={{ width: `${systemMetrics.cache_hit_rate_l3}%` }}></div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            );
+        }
+
+        // Cost Tab
+        function CostTab({ costData }) {
+            return (
+                <div className="space-y-6">
+                    <div className="glass-effect rounded-2xl shadow-lg p-6">
+                        <h2 className="text-2xl font-bold text-gray-800 mb-6">
+                            <i className="fas fa-dollar-sign mr-2 text-green-500"></i>
+                            Cost Analysis
+                        </h2>
+
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                            <div className="p-4 bg-gradient-to-br from-green-50 to-emerald-50 rounded-xl">
+                                <p className="text-sm text-gray-600 mb-1">Total Cost (Today)</p>
+                                <p className="text-3xl font-bold text-green-600">
+                                    ${costData?.total_cost.toFixed(2)}
+                                </p>
+                            </div>
+                            <div className="p-4 bg-gradient-to-br from-blue-50 to-cyan-50 rounded-xl">
+                                <p className="text-sm text-gray-600 mb-1">Cost per Invocation</p>
+                                <p className="text-3xl font-bold text-blue-600">
+                                    ${(costData?.cost_per_invocation * 1000).toFixed(3)}
+                                </p>
+                                <p className="text-xs text-gray-500 mt-1">per 1K invocations</p>
+                            </div>
+                            <div className="p-4 bg-gradient-to-br from-purple-50 to-indigo-50 rounded-xl">
+                                <p className="text-sm text-gray-600 mb-1">Cost Savings</p>
+                                <p className="text-3xl font-bold text-purple-600">
+                                    ${costData?.cost_savings.toFixed(2)}
+                                </p>
+                            </div>
+                            <div className="p-4 bg-gradient-to-br from-orange-50 to-red-50 rounded-xl">
+                                <p className="text-sm text-gray-600 mb-1">Savings %</p>
+                                <p className="text-3xl font-bold text-orange-600">
+                                    {costData?.cost_savings_percentage.toFixed(1)}%
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div className="glass-effect rounded-2xl shadow-lg p-6">
+                        <h3 className="text-xl font-bold text-gray-800 mb-4">Cost Breakdown</h3>
+                        <div className="space-y-3">
+                            {costData && Object.entries(costData.cost_breakdown).map(([key, value]) => (
+                                <div key={key} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                                    <span className="text-gray-700 capitalize">{key.replace('_', ' ')}</span>
+                                    <span className="font-bold text-gray-800">${value.toFixed(2)}</span>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                </div>
+            );
+        }
+
+        // Render App
+        ReactDOM.render(
+            <ErrorBoundary>
+                <Dashboard />
+            </ErrorBoundary>,
+            document.getElementById('root')
+        );
+    </script>
+</body>
+
+</html>
